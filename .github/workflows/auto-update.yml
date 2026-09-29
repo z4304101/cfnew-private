@@ -1,0 +1,56 @@
+name: auto-update
+
+# 每天 11:00（北京时间）检查上游 byJoey/cfnew 是否有新提交；
+# 有则同步源码并自动重新部署 Worker。也可手动触发。
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查上游更新
+        id: check
+        run: |
+          UPSTREAM=$(curl -s --fail https://api.github.com/repos/byJoey/cfnew/commits/main | jq -r .sha)
+          CURRENT=$(cat upstream.sha 2>/dev/null | tr -d ' \n' || echo none)
+          echo "upstream=$UPSTREAM" >> "$GITHUB_OUTPUT"
+          if [ -n "$UPSTREAM" ] && [ "$UPSTREAM" != "null" ] && [ "$UPSTREAM" != "$CURRENT" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "上游有新提交: $UPSTREAM（当前: $CURRENT）"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "上游无更新"
+          fi
+
+      - name: 下载新源码
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          curl -sL --fail "https://raw.githubusercontent.com/byJoey/cfnew/main/明文源吗" -o worker.js
+          test "$(wc -c < worker.js)" -gt 100000
+          grep -q "export default" worker.js
+          echo "源码已下载并通过基础校验"
+
+      - name: 部署到 Cloudflare
+        if: steps.check.outputs.changed == 'true'
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          WORKER_UUID: ${{ secrets.WORKER_UUID }}
+        run: python3 deploy.py
+
+      - name: 记录新版本并提交
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          printf '%s' "${{ steps.check.outputs.upstream }}" > upstream.sha
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add worker.js upstream.sha
+          git commit -m "同步上游 ${{ steps.check.outputs.upstream }}"
+          git push
