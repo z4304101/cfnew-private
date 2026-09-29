@@ -2,7 +2,7 @@ name = "cfnew"
 main = "worker.js"
 compatibility_date = "2026-01-20"
 
-# UUID：订阅与配置界面的访问凭证，部署时会写入环境变量 u。
-# 私有仓库内保存即可；若更换 UUID，同步更新 GitHub Secrets 中的 WORKER_UUID。
+# UUID：订阅与配置界面的访问凭证，部署时写入环境变量 u。
+# 不要把真实 UUID 提交到仓库；用 `wrangler secret put u` 或 GitHub Secrets（WORKER_UUID）传入。
 [vars]
-u = "a7e18ef3-4a9a-4993-85f8-1b791ac976aa"
+u = "YOUR-UUID-HERE"
